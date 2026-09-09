@@ -1,0 +1,42 @@
+name: Provera vodostaja Drine (Bajina Basta)
+
+on:
+  schedule:
+    # Svakog sata, u minutu :10. Prilagodi po potrebi.
+    - cron: "10 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Pokreni proveru
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python check_water_level.py
+
+      - name: Sacuvaj novo stanje (ako se promenilo)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- state/last_state.json; then
+            git add state/last_state.json
+            git commit -m "Azuriranje vodostaja [skip ci]"
+            git push
+          else
+            echo "Nema promene stanja za commit."
+          fi
