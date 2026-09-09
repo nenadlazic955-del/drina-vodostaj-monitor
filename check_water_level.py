@@ -86,7 +86,8 @@ def fetch_reading():
 
 def load_last_state():
     if STATE_FILE.exists():
-        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        return data or None
     return None
 
 
