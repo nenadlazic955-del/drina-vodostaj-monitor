@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """
-Proverava vodostaj Drine na stanici Bajina Basta (RHMZ Srbije) i salje
-ntfy.sh notifikaciju na telefon kada se vrednost promeni u odnosu na
-poslednju sacuvanu vrednost.
+Proverava vodostaj Drine na stanici Bajina Basta (RHMZ Srbije, automatska
+stanica - ocitavanje na svakih 30 min) i salje ntfy.sh notifikaciju na
+telefon kada se vrednost promeni u odnosu na poslednju sacuvanu vrednost.
 
-Izvor podataka (zvanicni, RHMZ):
-https://www.hidmet.gov.rs/latin/hidrologija/izvestajne/bezprognoza.php?hm_id=45865
+Izvor podataka (zvanicni, RHMZ - "casovne vrednosti vodostaja, poslednjih
+7 dana"):
+https://www.hidmet.gov.rs/latin/osmotreni/nrt_tabela_grafik.php?hm_id=45865&period=7
+
+Napomena RHMZ-a o ovim podacima: "Podaci su privremeni, nekontrolisani,
+nisu provereni i mogu sadrzati pogresne vrednosti." Nagle promene mogu
+biti realne (npr. ispustanje vode iz HE Bajina Basta / Perucac), a ne
+nuzno greska senzora.
 """
 
 import json
@@ -17,8 +23,8 @@ import requests
 from bs4 import BeautifulSoup
 
 STATION_URL = (
-    "https://www.hidmet.gov.rs/latin/hidrologija/izvestajne/"
-    "bezprognoza.php?hm_id=45865"
+    "https://www.hidmet.gov.rs/latin/osmotreni/"
+    "nrt_tabela_grafik.php?hm_id=45865&period=7"
 )
 STATE_FILE = Path(__file__).parent / "state" / "last_state.json"
 
@@ -27,7 +33,7 @@ NTFY_TOPIC = os.environ.get("NTFY_TOPIC")
 
 
 def fetch_reading():
-    """Preuzima stranicu i vraca dict sa datumom, vodostajem, promenom, itd."""
+    """Preuzima stranicu i vraca najnovije (prvo) ocitavanje iz tabele."""
     resp = requests.get(
         STATION_URL,
         headers={"User-Agent": "Mozilla/5.0 (drina-vodostaj-monitor bot)"},
@@ -46,42 +52,22 @@ def fetch_reading():
     if target_table is None:
         raise RuntimeError("Nisam pronasao tabelu sa podacima o vodostaju.")
 
-    rows = target_table.find_all("tr")
+    tbody = target_table.find("tbody")
+    if tbody is None:
+        raise RuntimeError("Tabela nema tbody - format stranice se promenio.")
 
-    datum = None
-    header_idx = None
-    for i, tr in enumerate(rows):
-        text = tr.get_text(" ", strip=True)
-        if "Datum:" in text:
-            datum = text.split("Datum:")[-1].strip()
-        tds = tr.find_all("td")
-        if tds and tds[0].get_text(strip=True).startswith("Vodostaj"):
-            header_idx = i
+    first_row = tbody.find("tr")
+    if first_row is None:
+        raise RuntimeError("Tabela je prazna - nema redova sa ocitavanjima.")
 
-    if header_idx is None:
-        raise RuntimeError("Nisam pronasao header red sa kolonom 'Vodostaj'.")
+    tds = first_row.find_all("td")
+    if len(tds) < 2:
+        raise RuntimeError("Red u tabeli nema ocekivane dve kolone.")
 
-    value_tds = None
-    for tr in rows[header_idx + 1 :]:
-        tds = tr.find_all("td")
-        if len(tds) == 4:
-            value_tds = tds
-            break
+    datum_vreme = tds[0].get_text(strip=True)
+    vodostaj = tds[1].get_text(strip=True)
 
-    if value_tds is None:
-        raise RuntimeError("Nisam pronasao red sa vrednostima vodostaja.")
-
-    vodostaj, promena, proticaj, temperatura = (
-        td.get_text(strip=True) for td in value_tds
-    )
-
-    return {
-        "datum": datum,
-        "vodostaj_cm": vodostaj,
-        "promena_cm": promena,
-        "proticaj_m3s": proticaj,
-        "temperatura_c": temperatura,
-    }
+    return {"datum_vreme": datum_vreme, "vodostaj_cm": vodostaj}
 
 
 def load_last_state():
@@ -125,20 +111,17 @@ def main():
         save_state(reading)
         return
 
-    if reading["vodostaj_cm"] != last.get("vodostaj_cm") or reading["datum"] != last.get(
-        "datum"
-    ):
+    if reading["vodostaj_cm"] != last.get("vodostaj_cm"):
         message = (
-            f"Vodostaj: {reading['vodostaj_cm']} cm "
-            f"(promena: {reading['promena_cm']} cm)\n"
-            f"Datum: {reading['datum']}\n"
+            f"Vodostaj: {reading['vodostaj_cm']} cm\n"
+            f"Vreme merenja: {reading['datum_vreme']}\n"
             f"Prethodno: {last.get('vodostaj_cm')} cm"
         )
         print("Promena detektovana, saljem notifikaciju:\n" + message)
         send_notification("Vodostaj Drine - Bajina Basta", message)
         save_state(reading)
     else:
-        print("Bez promene, notifikacija se ne salje.")
+        print("Bez promene vodostaja, notifikacija se ne salje.")
 
 
 if __name__ == "__main__":

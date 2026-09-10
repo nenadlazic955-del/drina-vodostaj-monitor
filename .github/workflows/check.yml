@@ -2,8 +2,8 @@ name: Provera vodostaja Drine (Bajina Basta)
 
 on:
   schedule:
-    # Svakog sata, u minutu :10. Prilagodi po potrebi.
-    - cron: "10 * * * *"
+    # Na svakih 30 minuta - prati ucestalost RHMZ automatske stanice.
+    - cron: "*/30 * * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -36,6 +36,7 @@ jobs:
           git add state/last_state.json
           if ! git diff --cached --quiet -- state/last_state.json; then
             git commit -m "Azuriranje vodostaja [skip ci]"
+            git pull --rebase origin master
             git push
           else
             echo "Nema promene stanja za commit."

@@ -4,14 +4,17 @@ Mala automatizacija koja proverava vodostaj Drine na stanici Bajina Basta
 (zvanicni podaci RHMZ Srbije) i salje ti push notifikaciju na telefon
 (preko [ntfy.sh](https://ntfy.sh)) kad god se vrednost promeni.
 
-Izvor podataka: https://www.hidmet.gov.rs/latin/hidrologija/izvestajne/bezprognoza.php?hm_id=45865
-(stanica se azurira otprilike jednom dnevno).
+Izvor podataka: https://www.hidmet.gov.rs/latin/osmotreni/nrt_tabela_grafik.php?hm_id=45865&period=7
+("Casovne vrednosti vodostaja, poslednjih 7 dana" - automatska stanica,
+ocitavanje na svakih 30 min). RHMZ ove podatke oznacava kao "privremene,
+nekontrolisane" - nagle promene mogu biti realne (npr. ispustanje vode
+iz HE Bajina Basta / Perucac), a ne nuzno greska.
 
 ## Kako radi
 
-1. GitHub Actions svakog sata (podesivo u `.github/workflows/check.yml`)
-   pokrece `check_water_level.py`.
-2. Skripta skine i parsira zvanicnu RHMZ stranicu.
+1. GitHub Actions na svakih 30 minuta (podesivo u
+   `.github/workflows/check.yml`) pokrece `check_water_level.py`.
+2. Skripta skine i parsira najnoviji (prvi) red iz RHMZ tabele.
 3. Poredi novu vrednost sa poslednjom sacuvanom (`state/last_state.json`).
 4. Ako se vrednost promenila, posalje notifikaciju preko ntfy.sh i
    commit-uje novo stanje nazad u repo.
@@ -63,14 +66,9 @@ drugog runa, kad se vrednost promeni, stize notifikacija.
 
 ## Podesavanje ucestalosti provere
 
-U `.github/workflows/check.yml`, linija sa `cron: "10 * * * *"` - format
-je standardni cron (UTC vreme). Trenutno je svakog sata. Posto se
-zvanicna stanica azurira ~1x dnevno, mozes smanjiti na npr. par puta
-ujutru:
-
-```yaml
-- cron: "0 5,6,7,8 * * *"   # 5,6,7,8h UTC = 7,8,9,10h po srpskom letnjem vremenu
-```
+U `.github/workflows/check.yml`, linija sa `cron: "*/30 * * * *"` - format
+je standardni cron (UTC vreme). Trenutno proverava na svakih 30 minuta,
+sto prati ucestalost same RHMZ automatske stanice.
 
 ## Lokalno testiranje
 
