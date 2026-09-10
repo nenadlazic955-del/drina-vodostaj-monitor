@@ -52,20 +52,22 @@ def fetch_reading():
     if target_table is None:
         raise RuntimeError("Nisam pronasao tabelu sa podacima o vodostaju.")
 
-    tbody = target_table.find("tbody")
-    if tbody is None:
-        raise RuntimeError("Tabela nema tbody - format stranice se promenio.")
+    # Ne oslanjamo se na <tbody> - sirovi HTML ga cesto nema eksplicitno
+    # (samo ga browser DOM automatski dodaje), pa direktno trazimo prvi
+    # red koji ima tacno 2 <td> celije (header ima <th>, footer/napomena
+    # ima 1 <td colspan="2">, pa se prirodno preskacu).
+    data_row = None
+    for tr in target_table.find_all("tr"):
+        tds = tr.find_all("td")
+        if len(tds) == 2:
+            data_row = tds
+            break
 
-    first_row = tbody.find("tr")
-    if first_row is None:
-        raise RuntimeError("Tabela je prazna - nema redova sa ocitavanjima.")
+    if data_row is None:
+        raise RuntimeError("Nisam pronasao red sa ocitavanjem (2 kolone).")
 
-    tds = first_row.find_all("td")
-    if len(tds) < 2:
-        raise RuntimeError("Red u tabeli nema ocekivane dve kolone.")
-
-    datum_vreme = tds[0].get_text(strip=True)
-    vodostaj = tds[1].get_text(strip=True)
+    datum_vreme = data_row[0].get_text(strip=True)
+    vodostaj = data_row[1].get_text(strip=True)
 
     return {"datum_vreme": datum_vreme, "vodostaj_cm": vodostaj}
 
